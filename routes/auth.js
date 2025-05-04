@@ -130,13 +130,24 @@ router.post('/refresh', async (req, res) => {
     }
 });
 
-// --- Оновлення профілю ---
+// --- Оновлення профілю з перевіркою токену ---
 router.put('/profile/:id', async (req, res) => {
-    const { id } = req.params;
-    const { name, email, password } = req.body;
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: 'No token provided' });
+    }
 
+    const token = authHeader.split(' ')[1];
     try {
-        const user = await User.findById(id);
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        // Дозволяємо змінювати лише свій профіль
+        if (decoded.userId !== req.params.id) {
+            return res.status(403).json({ message: 'Forbidden: You can update only your own profile' });
+        }
+
+        const { name, email, password } = req.body;
+        const user = await User.findById(req.params.id);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -150,7 +161,7 @@ router.put('/profile/:id', async (req, res) => {
         res.status(200).json({ message: 'Profile updated successfully', user });
     } catch (error) {
         console.error("Profile Update Error:", error);
-        res.status(500).json({ message: 'Server error during profile update' });
+        res.status(401).json({ message: 'Invalid or expired token' });
     }
 });
 
