@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import userRoutes from './routes/userRoutes.js'; // Додай цей рядок
 dotenv.config();
 
 import express from 'express';
@@ -30,6 +31,8 @@ app.get('/', (req, res) => {
 
 // Auth routes
 app.use('/api/auth', authRoutes);
+// User routes (профіль, статистика, друзі)
+app.use('/api/users', userRoutes); // <<< ДОДАЙ ЦЕЙ РЯДОК
 
 // Start server
 app.listen(PORT, () => {
