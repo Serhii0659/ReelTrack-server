@@ -1,3 +1,4 @@
+// C:\Users\kreps\Documents\ReelTrack\server\models\User.js
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -29,6 +30,27 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    // >>> ДОДАНО ПОЛЯ ДЛЯ ДРУЗІВ ТА ЗАПИТІВ <<<
+    friends: [ // Список друзів
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User', // Посилання на іншу модель User
+        },
+    ],
+    friendRequestsSent: [ // Запити в друзі, які відправив цей користувач
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User', // Посилання на іншу модель User
+        },
+    ],
+    friendRequestsReceived: [ // Запити в друзі, які отримав цей користувач
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User', // Посилання на іншу модель User
+        },
+    ],
+    // >>> КІНЕЦЬ ДОДАНИХ ПОЛІВ <<<
+
 }, { timestamps: true }); // Додає createdAt та updatedAt
 
 // Middleware (hook) для хешування пароля перед збереженням
@@ -51,4 +73,4 @@ UserSchema.methods.comparePassword = async function (candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
-export default mongoose.model('User', UserSchema);
+export default mongoose.model('User', UserSchema); // Створюємо модель User на основі схеми
