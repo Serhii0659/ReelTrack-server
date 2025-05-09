@@ -14,46 +14,81 @@ export const getUserProfile = async (req, res) => {
 // Оновити профіль поточного користувача
 export const updateUserProfile = async (req, res) => {
     const userId = req.user._id;
-    const { name, email, password, watchlistPrivacy /*, avatarUrl */ } = req.body;
+    // req.body тепер розпарсено multer'ом для текстових полів з FormData
+    const { name, password, watchlistPrivacy /* email не оновлюємо через цей ендпоінт */ } = req.body;
+
+    // === ОБРОБКА ФАЙЛУ АВАТАРКИ ===
+    // Multer збереже файл і додасть інформацію про нього до req.file
+    const avatarFile = req.file; // <-- Доступ до інформації про завантажений файл
+    let avatarUrl = null;
+
+    if (avatarFile) {
+        // Якщо файл був успішно завантажений Multer'ом
+        // Ми можемо отримати шлях до збереженого файлу
+        // Multer diskStorage зберігає файл за вказаним destination
+        // Нам потрібен шлях, який буде доступний з фронтенду
+        // !!! ПОТРІБНО НАЛАШТУВАТИ СТАТИЧНУ ПАПКУ У СВОЄМУ EXPRESS ДОДАТКУ (server.js) !!!
+        // Наприклад: app.use('/uploads', express.static('uploads'));
+        // Тоді шлях буде /uploads/filename.jpg
+        // Припустимо, що папка 'uploads' доступна як '/uploads' через статичний middleware
+        avatarUrl = `/uploads/${avatarFile.filename}`; // <-- Формуємо URL для бази даних
+        // TODO: Реалізувати логіку видалення старого файлу аватарки, якщо він існував user.avatarUrl
+        // if (user.avatarUrl && user.avatarUrl !== `/uploads/default_avatar.png`) { ... }
+    }
+
 
     try {
         const user = await User.findById(userId);
         if (!user) {
+            // Це не має статися завдяки protect middleware, але як перестраховка
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Перевірка унікальності email, якщо він змінюється
-        if (email && email !== user.email) {
-            const existingUser = await User.findOne({ email });
-            if (existingUser) {
-                return res.status(400).json({ message: 'Email already in use' });
-            }
-            user.email = email;
-        }
+        // Оновлення полів з req.body (які розпарсив multer)
+        if (name !== undefined) user.name = name; // Перевіряємо на undefined, бо name може бути пустим рядком
 
-        // Оновлення полів
-        if (name) user.name = name;
+        // Оновлення налаштувань приватності (якщо вони є у формі)
         if (watchlistPrivacy && ['public', 'friendsOnly', 'private'].includes(watchlistPrivacy)) {
             user.watchlistPrivacy = watchlistPrivacy;
         }
-        // if (avatarUrl) user.avatarUrl = avatarUrl;
+        // Оновлення Email та Пароля - краще робити через окремі ендпоінти для безпеки
+        // Якщо вони все ж є тут, їх теж розпарсить multer у req.body
 
-        // Оновлення пароля (хешування відбудеться в pre-save hook)
-        if (password) {
-            if (password.length < 6) {
-                return res.status(400).json({ message: 'Password must be at least 6 characters long' });
-            }
-            user.password = password;
+        // === ЗБЕРІГАЄМО URL АВАТАРКИ ===
+        if (avatarUrl) {
+           // TODO: Можливо, додати перевірку, чи старий avatarUrl відрізняється від нового і видалити старий файл
+           user.avatarUrl = avatarUrl; // <-- Зберігаємо URL нового аватара у базу даних
         }
 
+
+        // Оновлення пароля (якщо є у формі і не порожній)
+        if (password && password.length > 0) { // Додано перевірку на довжину
+            if (password.length < 6) {
+                // Це має бути перевірено на фронтенді, але добре мати і на бекенді
+                return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+            }
+            user.password = password; // Hashing відбувається у pre-save hook моделі User
+        }
+
+
         const updatedUser = await user.save();
-        res.json(updatedUser); // Поверне дані без пароля завдяки toJSON
+
+        // === ПОВЕРТАЄМО ОНОВЛЕНИЙ ОБ'ЄКТ КОРИСТУВАЧА ===
+        // Важливо повернути повний об'єкт, щоб фронтенд міг оновити ID, ім'я, і новий avatarUrl
+        res.json(updatedUser); // Поверне дані без пароля завдяки методу toJSON у моделі User
 
     } catch (error) {
-        console.error("Update profile error:", error);
+        console.error("Update profile error:", error); // <-- Тут логується реальна помилка на бекенді
+        // Multer помилки теж можуть потрапити сюди (наприклад, розмір файлу)
+        // Можна додати більш специфічну обробку помилок multer
+        if (error instanceof multer.MulterError) {
+             return res.status(400).json({ message: `Multer error: ${error.message}` });
+        }
+        // Якщо помилка валідації Mongoose
         if (error.name === 'ValidationError') {
             return res.status(400).json({ message: error.message });
         }
+        // Інші помилки (наприклад, помилки бази даних)
         res.status(500).json({ message: 'Error updating profile' });
     }
 };
