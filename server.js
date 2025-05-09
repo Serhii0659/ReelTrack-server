@@ -1,4 +1,4 @@
-// server.js (або app.js)
+// server.js 
 import dotenv from 'dotenv';
 dotenv.config(); // Завантажуємо змінні середовища на початку
 
