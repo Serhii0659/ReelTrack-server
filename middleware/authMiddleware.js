@@ -6,38 +6,46 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const protect = async (req, res, next) => {
+    console.log('Auth Middleware - JWT_SECRET:', JWT_SECRET);
     let token;
 
-    // Читаємо JWT з 'Bearer' токена в заголовку Authorization
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-        try {
-            token = req.headers.authorization.split(' ')[1];
-
-            // Верифікуємо токен
-            const decoded = jwt.verify(token, JWT_SECRET);
-
-            // Знаходимо користувача за ID з токена (без пароля та refreshToken)
-            // Використання .select('-password -refreshToken') не є строго необхідним
-            // через метод toJSON в моделі, але це додаткова гарантія.
-            req.user = await User.findById(decoded.userId).select('-password -refreshToken');
-
-            if (!req.user) {
-                // Якщо користувача видалили після видачі токену
-                return res.status(401).json({ message: 'Not authorized, user not found' });
-            }
-
-            next(); // Переходимо до наступного middleware/маршруту
-        } catch (error) {
-            console.error('Token verification failed:', error);
-            if (error.name === 'TokenExpiredError') {
-                return res.status(401).json({ message: 'Not authorized, token expired' });
-            }
-            return res.status(401).json({ message: 'Not authorized, token failed' });
-        }
+    // Перевіряємо, чи є заголовок авторизації і чи він починається з 'Bearer'
+    if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer')) {
+        // Якщо токен відсутній або заголовок сформований неправильно, повертаємо 401
+        return res.status(401).json({ message: 'Not authorized, no token or malformed header' });
     }
 
-    if (!token) {
-        res.status(401).json({ message: 'Not authorized, no token' });
+    try {
+        // Витягуємо токен
+        token = req.headers.authorization.split(' ')[1];
+        console.log('Extracted Token in Auth Middleware:', token); // <--- ДОДАНО
+        console.log('Type of Extracted Token:', typeof token);    // <--- ДОДАНО
+
+        // Перевіряємо токен
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        // Знаходимо користувача за ID з токена
+        req.user = await User.findById(decoded.userId).select('-password -refreshToken');
+
+        // Якщо користувача не знайдено (наприклад, видалили після видачі токену)
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authorized, user not found' });
+        }
+
+        // Переходимо до наступного middleware/маршруту
+        next();
+
+    } catch (error) {
+        // Записуємо помилку для налагодження
+        console.error('Token verification failed:', error);
+        console.error('Error details in authMiddleware:', error.message, error.name);
+
+        // Обробляємо конкретні помилки JWT
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Not authorized, token expired' });
+        }
+        // Для будь-яких інших помилок верифікації токена (наприклад, JsonWebTokenError за невірний підпис)
+        return res.status(401).json({ message: 'Not authorized, token failed' });
     }
 };
 

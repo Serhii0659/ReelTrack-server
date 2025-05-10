@@ -2,6 +2,30 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+// === ДОДАНО: Схема для елемента бібліотеки ===
+const libraryItemSchema = new mongoose.Schema({
+    tmdbId: {
+        type: Number,
+        required: true,
+    },
+    mediaType: {
+        type: String, // 'movie' або 'tv'
+        required: true,
+        enum: ['movie', 'tv']
+    },
+    status: {
+        type: String,
+        required: true,
+        enum: ['planning', 'watching', 'completed', 'dropped'], // Приклади статусів
+        default: 'planning'
+    },
+    addedAt: {
+        type: Date,
+        default: Date.now
+    }
+}, { _id: false }); // _id: false означає, що Mongoose не додаватиме ObjectId до кожного елемента масиву
+
+
 const UserSchema = new mongoose.Schema({
     email: {
         type: String,
@@ -15,7 +39,7 @@ const UserSchema = new mongoose.Schema({
         required: [true, 'Password is required'],
         minlength: [6, 'Password must be at least 6 characters long'],
     },
-    name: {
+    name: { // Твоє існуюче поле 'name'
         type: String,
         required: [true, 'Name is required'],
         minlength: [2, 'Name must be at least 2 characters long'],
@@ -30,7 +54,7 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
-    // >>> ДОДАНО ПОЛЯ ДЛЯ ДРУЗІВ ТА ЗАПИТІВ <<<
+    // >>> ТВОЇ ІСНУЮЧІ ПОЛЯ ДЛЯ ДРУЗІВ ТА ЗАПИТІВ <<<
     friends: [ // Список друзів
         {
             type: mongoose.Schema.Types.ObjectId,
@@ -49,7 +73,10 @@ const UserSchema = new mongoose.Schema({
             ref: 'User', // Посилання на іншу модель User
         },
     ],
-    // >>> КІНЕЦЬ ДОДАНИХ ПОЛІВ <<<
+    // >>> КІНЕЦЬ ІСНУЮЧИХ ПОЛІВ <<<
+
+    // === ДОДАНО: Поле для бібліотеки контенту ===
+    library: [libraryItemSchema] // <<< НОВЕ ПОЛЕ
 
 }, { timestamps: true }); // Додає createdAt та updatedAt
 
