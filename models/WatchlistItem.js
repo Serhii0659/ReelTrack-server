@@ -1,3 +1,4 @@
+//\server\models\WatchlistItem.js
 import mongoose from 'mongoose';
 
 const WatchlistItemSchema = new mongoose.Schema({

@@ -2,10 +2,8 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import dotenv from 'dotenv';
-dotenv.config();
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET;
 
 // --- Реєстрація ---
 router.post('/register', async (req, res) => {
@@ -64,8 +62,9 @@ router.post('/login', async (req, res) => {
         };
 
         // Генеруємо access token (1 година) та refresh token (7 днів)
-        const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
-        const refreshToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+        console.log('Auth Routes (Login/Register) - JWT_SECRET:', process.env.JWT_SECRET); // Можеш залишити цей лог для перевірки
+        const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const refreshToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         // Зберігаємо refresh token в базі даних (для перевірки пізніше)
         user.refreshToken = refreshToken;
@@ -98,7 +97,7 @@ router.post('/refresh', async (req, res) => {
 
     try {
         // Перевіряємо, чи refresh token валідний і не прострочений
-        const decoded = jwt.verify(refreshToken, JWT_SECRET);
+        const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
         const user = await User.findById(decoded.userId);
 
         if (!user || user.refreshToken !== refreshToken) {
@@ -113,8 +112,8 @@ router.post('/refresh', async (req, res) => {
             role: user.role,
         };
 
-        const newAccessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
-        const newRefreshToken = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+        const newAccessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const newRefreshToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         // Оновлюємо refresh token в базі
         user.refreshToken = newRefreshToken;
@@ -130,6 +129,42 @@ router.post('/refresh', async (req, res) => {
     }
 });
 
+// --- Перевірка токену ---
+router.get('/verify-token', async (req, res) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ isValid: false, message: 'No token provided or token is malformed' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        const user = await User.findById(decoded.userId).select('-password -refreshToken');
+
+        if (!user) {
+            return res.status(404).json({ isValid: false, message: 'User not found associated with token' });
+        }
+
+        res.status(200).json({
+            isValid: true,
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                role: user.role
+            },
+            message: 'Token is valid'
+        });
+
+    } catch (error) {
+        console.error("Помилка перевірки токена:", error.message);
+        return res.status(401).json({ isValid: false, message: 'Invalid or expired token' });
+    }
+});
+
 // --- Оновлення профілю з перевіркою токену ---
 router.put('/profile/:id', async (req, res) => {
     const authHeader = req.headers.authorization;
@@ -139,9 +174,8 @@ router.put('/profile/:id', async (req, res) => {
 
     const token = authHeader.split(' ')[1];
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Дозволяємо змінювати лише свій профіль
         if (decoded.userId !== req.params.id) {
             return res.status(403).json({ message: 'Forbidden: You can update only your own profile' });
         }
@@ -152,10 +186,9 @@ router.put('/profile/:id', async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Оновлення полів, якщо вони передані
         if (name) user.name = name;
         if (email) user.email = email;
-        if (password) user.password = password; // Хешування виконається через pre-save hook
+        if (password) user.password = password;
 
         await user.save();
         res.status(200).json({ message: 'Profile updated successfully', user });
@@ -174,11 +207,11 @@ router.post('/logout', async (req, res) => {
     }
 
     try {
-        const decoded = jwt.verify(refreshToken, JWT_SECRET);
+        const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
         const user = await User.findById(decoded.userId);
 
         if (user) {
-            user.refreshToken = null; // Видаляємо refresh token
+            user.refreshToken = null;
             await user.save();
         }
 
