@@ -4,6 +4,8 @@ console.log('--- ВЕРСІЯ СЕРВЕРА ЗАПУЩЕНА ---');
 import dotenv from 'dotenv';
 dotenv.config();
 
+console.log('JWT_SECRET from server.js (after dotenv.config()):', process.env.JWT_SECRET);
+
 import express from 'express';
 import mongoose from 'mongoose';
 import morgan from 'morgan';
@@ -13,8 +15,9 @@ import { fileURLToPath } from 'url';
 // Імпортуємо ваші маршрути
 import authRoutes from './routes/authRoutes.js'; // Переконайтеся, що це 'authRoutes.js'
 import userRoutes from './routes/userRoutes.js';
-import watchlistRoutes from './routes/watchlistRoutes.js'; // Можливо, у вас є ще маршрути
-import friendRoutes from './routes/friendRoutes.js'; // Можливо, у вас є ще маршрути
+import watchlistRoutes from './routes/watchlistRoutes.js';
+import friendRoutes from './routes/friendRoutes.js';
+import contentRoutes from './routes/contentRoutes.js'; // <--- ДОДАНО: Імпорт маршрутів контенту
 
 // Визначення __dirname для ES модулів
 const __filename = fileURLToPath(import.meta.url);
@@ -81,7 +84,7 @@ app.use('/api/users', userRoutes);
 // Додайте інші ваші маршрути тут:
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/friends', friendRoutes);
-
+app.use('/api/content', contentRoutes); // <--- ДОДАНО: Підключення маршрутів контенту
 
 // Обробка помилок (розмістіть після всіх маршрутів)
 app.use((err, req, res, next) => {

@@ -1,11 +1,12 @@
 import express from 'express';
 import { protect } from '../middleware/authMiddleware.js'; // ДОДАНО
 import {
-    addToWatchlist,
-    getWatchlist,
-    updateWatchlistItem,
-    deleteWatchlistItem,
-    getWatchlistItemDetails // Опціонально
+    addToWatchlist,
+    getWatchlist,
+    updateWatchlistItem,
+    deleteWatchlistItem,
+    getWatchlistItemDetails, // Опціонально
+    toggleWatchlistContent // <--- ДОДАНО: Імпорт нової функції
 } from '../controllers/watchlistController.js';
 
 const router = express.Router();
@@ -24,5 +25,8 @@ router.put('/:id', protect, updateWatchlistItem); // ЗМІНЕНО
 
 // DELETE /api/watchlist/:id - Видалити елемент зі списку
 router.delete('/:id', protect, deleteWatchlistItem); // ЗМІНЕНО
+
+// POST /api/watchlist/toggle - Додати або видалити контент зі списку перегляду
+router.post('/toggle', protect, toggleWatchlistContent); // <--- ДОДАНО НОВИЙ МАРШРУТ
 
 export default router;
