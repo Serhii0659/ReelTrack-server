@@ -1,22 +1,21 @@
-//\server\routes\contentRoutes.js
+// server/routes/contentRoutes.js
 import express from 'express';
 import { 
-    searchContent, 
-    getDetailsByTmdbId,
-    getReviewsForContent, 
-    submitReview          
+    searchContent, 
+    getDetailsByTmdbId,
+    getReviewsForContent, 
+    submitReview,
+    getUserReviewForContent // <--- ДОДАНО: Імпорт нової функції контролера
 } from '../controllers/contentController.js';
-import { protect } from '../middleware/authMiddleware.js'; // <--- ДОДАНО: Імпорт middleware для захисту маршрутів
+import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 router.get('/search', searchContent);
 
-// ВИПРАВЛЕННЯ: Шлях змінено на кореневий для router, щоб відповідати запиту фронтенду
-// Це означає, що при підключенні в server.js як /api/content, повний шлях буде /api/content/:mediaType/:tmdbId
-router.get('/:mediaType/:tmdbId', getDetailsByTmdbId); // ВИДАЛЕНО '/details' з маршруту
+router.get('/:mediaType/:tmdbId', getDetailsByTmdbId);
 
-// --- НОВІ МАРШРУТИ ДЛЯ ВІДГУКІВ ---
+// --- МАРШРУТИ ДЛЯ ВІДГУКІВ ---
 // GET всіх відгуків для певного контенту
 router.get('/:mediaType/:tmdbId/reviews', getReviewsForContent);
 
@@ -26,7 +25,11 @@ router.post('/:mediaType/:tmdbId/reviews', protect, submitReview);
 // PUT оновлення існуючого відгуку (потребує авторизації)
 router.put('/:mediaType/:tmdbId/reviews/:reviewId', protect, submitReview);
 
-// Опціонально: Маршрут для видалення відгуку (якщо буде потрібно)
-// router.delete('/:mediaType/:tmdbId/reviews/:reviewId', protect, deleteReview);
+// --- НОВИЙ МАРШРУТ: GET відгук поточного користувача для контенту ---
+// Фронтенд запитує /api/content/:mediaType/:tmdbId/my-review
+router.get('/:mediaType/:tmdbId/my-review', protect, getUserReviewForContent); // <--- ДОДАНО ЦЕЙ РЯДОК
+
+// Опціонально: Маршрут для видалення відгуку
+// router.delete('/:mediaType/:tmdbId/reviews/:reviewId', protect, deleteReview); // Розкоментуйте, якщо у вас є така функція
 
 export default router;

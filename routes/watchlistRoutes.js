@@ -1,33 +1,34 @@
-//\server\routes\watchlistRoutes.js
+// server/routes/watchlistRoutes.js
 import express from 'express';
-import { protect } from '../middleware/authMiddleware.js'; // ДОДАНО
+import { protect } from '../middleware/authMiddleware.js';
 import {
-    addToWatchlist,
-    getWatchlist,
-    updateWatchlistItem,
-    deleteWatchlistItem,
-    getWatchlistItemDetails, // Опціонально
-    toggleWatchlistContent // <--- ДОДАНО: Імпорт нової функції
+    // addToWatchlist, // <--- ВИДАЛЕНО: Ця функція не експортується з контролера.
+    getWatchlist,
+    updateWatchlistItem,
+    deleteWatchlistItem,
+    getWatchlistItemDetails, // Опціонально
+    toggleWatchlistContent // <--- Ця функція імпортована і буде використовуватися для додавання/видалення
 } from '../controllers/watchlistController.js';
 
 const router = express.Router();
 
-// POST /api/watchlist - Додати новий елемент
-router.post('/', protect, addToWatchlist); // ЗМІНЕНО
+// *** ЗВЕРНІТЬ УВАГУ: Старий маршрут для додавання ЗАКОМЕНТОВАНО/ВИДАЛЕНО. ***
+// POST /api/watchlist - Додати новий елемент (Цей маршрут більше не потрібен, якщо використовується /toggle)
+// router.post('/', protect, addToWatchlist); // <-- ЗАКОМЕНТОВАНО або ВИДАЛЕНО!
 
 // GET /api/watchlist - Отримати весь список користувача (з фільтрацією/сортуванням)
-router.get('/', protect, getWatchlist); // ЗМІНЕНО
+router.get('/', protect, getWatchlist);
 
 // GET /api/watchlist/:id - Отримати деталі одного елемента списку (якщо потрібно)
-// router.get('/:id', protect, getWatchlistItemDetails); // Якщо використовується, розкоментуйте і ДОДАЙТЕ 'protect'
+router.get('/:id', protect, getWatchlistItemDetails); // Розкоментовано, якщо ви його використовуєте. Переконайтесь, що він потрібен.
 
 // PUT /api/watchlist/:id - Оновити статус, оцінку, нотатки тощо
-router.put('/:id', protect, updateWatchlistItem); // ЗМІНЕНО
+router.put('/:id', protect, updateWatchlistItem);
 
 // DELETE /api/watchlist/:id - Видалити елемент зі списку
-router.delete('/:id', protect, deleteWatchlistItem); // ЗМІНЕНО
+router.delete('/:id', protect, deleteWatchlistItem);
 
-// POST /api/watchlist/toggle - Додати або видалити контент зі списку перегляду
-router.post('/toggle', protect, toggleWatchlistContent); // <--- ДОДАНО НОВИЙ МАРШРУТ
+// POST /api/watchlist/toggle - Додати або видалити контент зі списку перегляду (Основний маршрут для маніпуляцій)
+router.post('/toggle', protect, toggleWatchlistContent);
 
 export default router;

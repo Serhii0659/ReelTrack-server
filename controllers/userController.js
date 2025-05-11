@@ -1,12 +1,12 @@
 // server/controllers/userController.js
 import User from '../models/User.js';
 import WatchlistItem from '../models/WatchlistItem.js';
-import Review from '../models/reviewModel.js'; // <--- Переконайтеся, що модель Review імпортована
+import Review from '../models/reviewModel.js';
 import mongoose from 'mongoose';
-import { getPosterUrl } from '../utils/tmdbHelper.js';
+import { getMediaDetails, getPosterUrl } from '../utils/tmdbHelper.js'; // Імпортуємо getMediaDetails
 import asyncHandler from 'express-async-handler';
 import path from 'path';
-import fs from 'fs/promises'; // For avatar deletion
+import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -107,7 +107,7 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
 // @access  Public (with privacy checks)
 export const getUserPublicProfile = asyncHandler(async (req, res) => {
     const { userId } = req.params;
-    const currentUserId = req.user?._id; // req.user is available if authenticated
+    const currentUserId = req.user?._id;
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
         res.status(400);
@@ -124,35 +124,30 @@ export const getUserPublicProfile = asyncHandler(async (req, res) => {
     if (user.watchlistPrivacy === 'public') {
         canView = true;
     } else if (user.watchlistPrivacy === 'friendsOnly' && currentUserId) {
-        // Check if current user is in the target user's friends list
         if (user.friends.some(friendId => friendId.equals(currentUserId))) {
             canView = true;
         }
     }
-    // The user can always view their own profile
     if (currentUserId && currentUserId.equals(user._id)) {
         canView = true;
     }
 
 
     if (!canView) {
-        // If access is denied, return limited information
         return res.json({
             _id: user._id,
             name: user.name,
             avatarUrl: user.avatarUrl,
-            isPrivate: true, // Indicate that the profile is private
+            isPrivate: true,
             watchlistPrivacy: user.watchlistPrivacy
         });
     }
 
-    // If access is allowed, return full public profile data
     res.json({
         _id: user._id,
         name: user.name,
         avatarUrl: user.avatarUrl,
         watchlistPrivacy: user.watchlistPrivacy
-        // Add any other public fields here
     });
 });
 
@@ -184,25 +179,20 @@ export const sendFriendRequest = asyncHandler(async (req, res) => {
         throw new Error('User not found');
     }
 
-    // Check if already friends
     if (recipient.friends.includes(senderId)) {
         res.status(400);
         throw new Error('Already friends');
     }
-    // Check if request already sent by current user
     if (recipient.friendRequestsReceived.includes(senderId)) {
         res.status(400);
         throw new Error('Friend request already sent');
     }
-    // Check if recipient already sent a request to current user
     if (recipient.friendRequestsSent.includes(senderId)) {
         res.status(400);
         throw new Error('This user already sent you a request. Accept it instead.');
     }
 
-    // Add sender to recipient's received requests
     recipient.friendRequestsReceived.push(senderId);
-    // Add recipient to sender's sent requests
     sender.friendRequestsSent.push(recipientId);
 
     await recipient.save();
@@ -216,8 +206,8 @@ export const sendFriendRequest = asyncHandler(async (req, res) => {
 // @route   POST /api/users/friends/accept/:userId
 // @access  Private
 export const acceptFriendRequest = asyncHandler(async (req, res) => {
-    const senderId = req.params.userId; // The ID of the user who sent the request
-    const recipientId = req.user._id; // The ID of the current user (recipient)
+    const senderId = req.params.userId;
+    const recipientId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(senderId)) {
         res.status(400);
@@ -232,17 +222,14 @@ export const acceptFriendRequest = asyncHandler(async (req, res) => {
         throw new Error('User not found');
     }
 
-    // Check if the friend request exists
     if (!recipient.friendRequestsReceived.includes(senderId)) {
         res.status(404);
         throw new Error('Friend request not found');
     }
 
-    // Add each other to friends lists
     recipient.friends.push(senderId);
     sender.friends.push(recipientId);
 
-    // Remove the request from both users' lists
     recipient.friendRequestsReceived = recipient.friendRequestsReceived.filter(id => !id.equals(senderId));
     sender.friendRequestsSent = sender.friendRequestsSent.filter(id => !id.equals(recipientId));
 
@@ -257,8 +244,8 @@ export const acceptFriendRequest = asyncHandler(async (req, res) => {
 // @route   DELETE /api/users/friends/remove/:userId
 // @access  Private
 export const rejectOrRemoveFriend = asyncHandler(async (req, res) => {
-    const targetUserId = req.params.userId; // The ID of the user to reject/remove
-    const currentUserId = req.user._id; // The ID of the current user
+    const targetUserId = req.params.userId;
+    const currentUserId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
         res.status(400);
@@ -279,19 +266,16 @@ export const rejectOrRemoveFriend = asyncHandler(async (req, res) => {
 
     let actionTaken = null;
 
-    // Check if it's a received request to reject
     if (currentUser.friendRequestsReceived.includes(targetUserId)) {
         currentUser.friendRequestsReceived = currentUser.friendRequestsReceived.filter(id => !id.equals(targetUserId));
         targetUser.friendRequestsSent = targetUser.friendRequestsSent.filter(id => !id.equals(currentUserId));
         actionTaken = 'rejected';
     }
-    // Check if it's a sent request to cancel
     else if (currentUser.friendRequestsSent.includes(targetUserId)) {
         currentUser.friendRequestsSent = currentUser.friendRequestsSent.filter(id => !id.equals(targetUserId));
         targetUser.friendRequestsReceived = targetUser.friendRequestsReceived.filter(id => !id.equals(currentUserId));
         actionTaken = 'cancelled';
     }
-    // Check if they are friends to remove
     else if (currentUser.friends.includes(targetUserId)) {
         currentUser.friends = currentUser.friends.filter(id => !id.equals(targetUserId));
         targetUser.friends = targetUser.friends.filter(id => !id.equals(currentUserId));
@@ -313,7 +297,7 @@ export const rejectOrRemoveFriend = asyncHandler(async (req, res) => {
 // @access  Private
 export const getFriends = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id)
-        .populate('friends', 'name avatarUrl'); // Load name and avatarUrl of friends
+        .populate('friends', 'name avatarUrl');
 
     if (!user) {
         res.status(404);
@@ -328,7 +312,7 @@ export const getFriends = asyncHandler(async (req, res) => {
 // @access  Private
 export const getFriendRequests = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id)
-        .populate('friendRequestsReceived', 'name avatarUrl'); // Load data of users who sent requests
+        .populate('friendRequestsReceived', 'name avatarUrl');
 
     if (!user) {
         res.status(404);
@@ -350,38 +334,33 @@ export const getFriendWatchlist = asyncHandler(async (req, res) => {
         throw new Error('Invalid friend ID');
     }
 
-    const friend = await User.findById(friendId).select('friends watchlistPrivacy name'); // Get name for response
+    const friend = await User.findById(friendId).select('friends watchlistPrivacy name');
     if (!friend) {
         res.status(404);
         throw new Error('User not found');
     }
 
     let canViewWatchlist = false;
-    // Public watchlist
     if (friend.watchlistPrivacy === 'public') {
         canViewWatchlist = true;
     }
-    // Friends-only watchlist, check if current user is a friend
     else if (friend.watchlistPrivacy === 'friendsOnly' && currentUserId) {
         if (friend.friends.some(id => id.equals(currentUserId))) {
             canViewWatchlist = true;
         }
     }
-    // User can always view their own watchlist (handled by fetchUserWatchlist route)
-    // but this check ensures consistency if this controller was used for self-view
     else if (currentUserId.equals(friend._id)) {
-         canViewWatchlist = true;
+            canViewWatchlist = true;
     }
 
 
     if (!canViewWatchlist) {
-        res.status(403); // Forbidden
+        res.status(403);
         throw new Error('Access denied. This user\'s watchlist is private or for friends only.');
     }
 
-    // If access is allowed, fetch the watchlist items
     const { status, sortBy, sortOrder = 'desc', page = 1, limit = 20 } = req.query;
-    const query = { user: friendId }; // Filter by the friend's user ID
+    const query = { user: friendId };
     if (status) query.status = status;
 
     const sortOptions = {};
@@ -391,7 +370,7 @@ export const getFriendWatchlist = asyncHandler(async (req, res) => {
             sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
         }
     } else {
-        sortOptions.updatedAt = -1; // Default sort
+        sortOptions.updatedAt = -1;
     }
 
     const pageNum = parseInt(page, 10);
@@ -402,9 +381,8 @@ export const getFriendWatchlist = asyncHandler(async (req, res) => {
         .sort(sortOptions)
         .skip(skip)
         .limit(limitNum)
-        .lean(); // Use .lean() for faster read if you don't need Mongoose document methods
+        .lean();
 
-    // Add full poster URLs
     const itemsWithPoster = items.map(item => ({
         ...item,
         poster_full_url: getPosterUrl(item.posterPath)
@@ -413,7 +391,7 @@ export const getFriendWatchlist = asyncHandler(async (req, res) => {
     const totalItems = await WatchlistItem.countDocuments(query);
 
     res.json({
-        friendName: friend.name, // Include friend's name in the response
+        friendName: friend.name,
         items: itemsWithPoster,
         currentPage: pageNum,
         totalPages: Math.ceil(totalItems / limitNum),
@@ -443,7 +421,7 @@ export const getUserStats = asyncHandler(async (req, res) => {
         tvShowsCount: allItems.filter(item => item.mediaType === 'tv').length,
         completedCount: allItems.filter(item => item.status === 'completed').length,
         watchingCount: allItems.filter(item => item.status === 'watching').length,
-        planToWatchCount: allItems.filter(item => item.status === 'plan_to_watch').length, // Note: your current code uses 'planning' not 'plan_to_watch'
+        planToWatchCount: allItems.filter(item => item.status === 'plan_to_watch').length,
         onHoldCount: allItems.filter(item => item.status === 'on_hold').length,
         droppedCount: allItems.filter(item => item.status === 'dropped').length,
         averageRating: 0,
@@ -491,23 +469,11 @@ export const getUserStats = asyncHandler(async (req, res) => {
 export const getUserReviews = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
-    // Find all reviews left by this user
     const reviews = await Review.find({ reviewer: userId })
-        // --- ВИДАЛЕНО: СПРОБУ POPULATE 'content' ---
-        // Оскільки в моделі Review немає поля 'content' для populate,
-        // ми просто отримуємо відгуки як є. Вони містять tmdbId, mediaType, rating, comment, reviewer.
-        // Фронтенд повинен використовувати tmdbId та mediaType для отримання деталей контенту з TMDB.
-        // Якщо ви хочете завантажити дані користувача, який залишив відгук (хоча це завжди поточний користувач тут),
-        // ви можете використовувати .populate('reviewer', 'name avatarUrl')
-        // .populate('reviewer', 'name avatarUrl') // Опціонально: завантажити дані користувача
-        .sort({ createdAt: -1 }); // Sort by creation date (newest first)
+        .sort({ createdAt: -1 });
 
-    // Якщо ви хочете додати повні URL постерів тут, вам потрібно буде отримати posterPath з Review моделі
-    // і використовувати getPosterUrl, якщо ви зберігаєте posterPath в моделі Review.
     const reviewsWithPosterUrls = reviews.map(review => {
-        const reviewObject = review.toObject(); // Перетворюємо документ Mongoose на простий об'єкт
-        // Додаємо повний URL постера, якщо contentPosterPath зберігається в моделі Review
-        // та функція getPosterUrl доступна
+        const reviewObject = review.toObject();
         if (reviewObject.contentPosterPath) {
              reviewObject.poster_full_url = getPosterUrl(reviewObject.contentPosterPath);
         }
@@ -518,10 +484,43 @@ export const getUserReviews = asyncHandler(async (req, res) => {
     res.json(reviewsWithPosterUrls);
 });
 
+// НОВА ФУНКЦІЯ: Видалити відгук користувача
+// @desc    Delete a user's review
+// @route   DELETE /api/users/my-reviews/:reviewId
+// @access  Private
+export const deleteReview = asyncHandler(async (req, res) => {
+    const { reviewId } = req.params;
+    const userId = req.user._id; // Current authenticated user
+
+    if (!mongoose.Types.ObjectId.isValid(reviewId)) {
+        res.status(400);
+        throw new Error('Невірний формат ID відгуку.');
+    }
+
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+        res.status(404);
+        throw new Error('Відгук не знайдено.');
+    }
+
+    // Ensure the review belongs to the authenticated user
+    if (review.reviewer.toString() !== userId.toString()) {
+        res.status(403); // Forbidden
+        throw new Error('Користувач не має прав для видалення цього відгуку.');
+    }
+
+    await Review.deleteOne({ _id: reviewId });
+
+    res.status(200).json({ message: 'Відгук успішно видалено!' });
+});
+
 
 // @desc    Add content to user's library (using WatchlistItem model)
 // @route   POST /api/users/library/add
 // @access  Private
+// Ця функція, ймовірно, дублює логіку toggleWatchlistContent і може бути видалена.
+// ЗМІНЕНО: РОЗКОМЕНТОВАНО функцію addContentToLibrary
 export const addContentToLibrary = asyncHandler(async (req, res) => {
     console.log('User in addContentToLibrary controller:', req.user);
     const { tmdbId, mediaType, status, title, posterPath, releaseDate, genres } = req.body;
@@ -531,12 +530,11 @@ export const addContentToLibrary = asyncHandler(async (req, res) => {
         throw new Error('TMDB ID, media type, title, and poster path are required.');
     }
 
-    const userId = req.user._id; // Ensure req.user._id is available (user is authenticated)
+    const userId = req.user._id;
 
-    // Check if content already exists in the user's Watchlist
     const existingItem = await WatchlistItem.findOne({
         user: userId,
-        externalId: String(tmdbId), // Important: compare with externalId
+        externalId: String(tmdbId),
         mediaType: mediaType,
     });
 
@@ -545,31 +543,19 @@ export const addContentToLibrary = asyncHandler(async (req, res) => {
         throw new Error('Content already exists in your library.');
     }
 
-    // === ДОДАНО: Створення нового WatchlistItem та його збереження ===
     const newItem = new WatchlistItem({
         user: userId,
-        externalId: String(tmdbId), // TMDB ID is stored as externalId (convert to String as per schema)
+        externalId: String(tmdbId),
         mediaType,
         title,
         posterPath,
         releaseDate,
         genres,
-        status, // Use the status received from the frontend (now it's 'plan_to_watch')
-        // Add other fields you want to save, e.g.:
-        // originalTitle: req.body.originalTitle,
-        // overview: req.body.overview,
-        // language: req.body.language,
-        // runtime: req.body.runtime,
-        // userNotes: req.body.userNotes,
-        // userRating: req.body.userRating,
-        // episodesWatched: req.body.episodesWatched,
-        // totalEpisodes: req.body.totalEpisodes,
-        // totalSeasons: req.body.totalSeasons,
+        status,
     });
 
     const createdItem = await newItem.save();
 
-    // Відповідь клієнту про успішне додавання
     res.status(201).json({
         message: 'Контент успішно додано до бібліотеки!',
         item: createdItem,
@@ -582,32 +568,24 @@ export const addContentToLibrary = asyncHandler(async (req, res) => {
 // @route   GET /api/users/search
 // @access  Private (requires authentication)
 export const searchUsers = asyncHandler(async (req, res) => {
-    const query = req.query.q; // Отримуємо рядок пошуку з параметра запиту 'q'
+    const query = req.query.q;
 
     if (!query) {
         res.status(400).json({ message: 'Search query is required.' });
         return;
     }
 
-    // Припускаємо, що пошук здійснюється за ID користувача
-    // Перевіряємо, чи рядок запиту є валідним ObjectId
     if (!mongoose.Types.ObjectId.isValid(query)) {
-        // Якщо формат невірний, повертаємо порожній масив або повідомлення
-        // Можливо, варто повернути 400, якщо очікується саме ID
-         res.status(400).json({ message: 'Invalid user ID format.' });
-         return;
-        // АБО: res.json([]); // Повертаємо порожній масив, якщо не валідний ID
+           res.status(400).json({ message: 'Invalid user ID format.' });
+           return;
     }
 
     try {
-        // Шукаємо користувача за ID
-        const user = await User.findById(query).select('name avatarUrl'); // Вибираємо лише необхідні поля
+        const user = await User.findById(query).select('name avatarUrl');
 
         if (user) {
-            // Якщо користувач знайдений, повертаємо його в масиві (для сумісності з очікуваним форматом searchUsers на фронтенді)
             res.json([user]);
         } else {
-            // Якщо користувач не знайдений, повертаємо порожній масив
             res.json([]);
         }
     } catch (error) {
@@ -616,28 +594,51 @@ export const searchUsers = asyncHandler(async (req, res) => {
     }
 });
 
+// НОВА ФУНКЦІЯ: Отримати статус елемента в списку перегляду користувача
+// @desc    Get watchlist status for a specific content item for the current user
+// @route   GET /api/users/watchlist/status/:mediaType/:tmdbId
+// @access  Private
+export const getUserWatchlistStatus = asyncHandler(async (req, res) => {
+    const { mediaType, tmdbId } = req.params;
+    const userId = req.user._id; // User ID from authentication middleware
+
+    if (!userId) {
+        res.status(401);
+        throw new Error('Не авторизовано, немає токена користувача.');
+    }
+
+    if (!mediaType || !tmdbId) {
+        res.status(400);
+        throw new Error('Тип медіа та TMDB ID є обов\'язковими.');
+    }
+
+    // Перевірку ObjectId для tmdbId ВИДАЛЕНО, оскільки це ID з TMDB, а не з MongoDB
+    // if (!mongoose.Types.ObjectId.isValid(tmdbId)) {
+    //     res.status(400);
+    //     throw new Error('Невірний формат ID відгуку.');
+    // }
+
+    const watchlistItem = await WatchlistItem.findOne({
+        user: userId,
+        externalId: String(tmdbId), // Переконайтеся, що externalId зберігається як рядок, якщо це ваша схема
+        mediaType: mediaType,
+    });
+
+    if (watchlistItem) {
+        res.json({ exists: true, status: watchlistItem.status, userRating: watchlistItem.userRating });
+    } else {
+        res.json({ exists: false, status: null, userRating: null });
+    }
+});
+
 
 // --- Генерація Картинок (складно, вимагає додаткових бібліотек) ---
-// Stubs for functions, implementation requires 'canvas' or 'puppeteer'
 /*
 export const generateShareImage = asyncHandler(async (req, res) => {
-    // 1. Get user stats (call getUserStats or similar logic)
-    // 2. Use a library like 'canvas' or 'puppeteer' to render stats on a background image/template
-    // 3. Set the correct Content-Type ('image/png' або 'image/jpeg')
-    // 4. Send the generated image in the response (res.send(buffer) або res.sendFile(path))
     res.status(501).json({ message: 'Image generation not implemented yet' });
 });
 
 export const generateRecommendationCard = asyncHandler(async (req, res) => {
-     // 1. Get the item ID from req.params.watchlistItemId
-     // 2. Find this item in the database WatchlistItem.findById(...)
-     // 3. Check if it belongs to the user req.user._id
-     // 4. Get data (poster, title, description, user rating)
-     // 5. Use a library to generate the card image
-     // 6. Send the image
      res.status(501).json({ message: 'Recommendation card generation not implemented yet' });
 });
 */
-
-// --- TODO: Recommendations (very complex, optional) ---
-// --- TODO: Reminders (requires a task scheduler/cron) ---

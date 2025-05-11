@@ -1,108 +1,50 @@
-// server\routes\userRoutes.js
+// server/routes/userRoutes.js
+
 import express from 'express';
-import {
-    updateUserProfile,
-    getUserProfile,
-    getUserStats,
-    sendFriendRequest,
-    acceptFriendRequest,
-    rejectOrRemoveFriend,
-    getFriends,
-    getFriendRequests,
-    getUserPublicProfile,
-    getFriendWatchlist,
-    getUserReviews,
-    searchUsers, // <--- ДОДАНО: Імпорт функції пошуку користувачів
-    // generateShareImage,
-    // generateRecommendationCard,
-    addContentToLibrary,
-} from '../controllers/userController.js';
-import { protect } from '../middleware/authMiddleware.js'; // Імпорт middleware
-
-// === ІМПОРТУЄМО MULTER ТА НАЛАШТОВУЄМО ЗБЕРІГАННЯ ===
-import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, path.join(__dirname, '..', 'uploads'));
-    },
-    filename: function (req, file, cb) {
-        const userId = req.user._id;
-        const fileExtension = path.extname(file.originalname);
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, `avatar_${userId}_${uniqueSuffix}${fileExtension}`);
-    }
-});
-
-const upload = multer({
-    storage: storage,
-    limits: { fileSize: 1024 * 1024 * 5 },
-    fileFilter: function(req, file, cb){
-        const filetypes = /jpeg|jpg|png|gif/;
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
-        if(mimetype && extname){
-            return cb(null, true);
-        } else {
-            cb('Error: Images Only!');
-        }
-    }
-});
-
-
-// === ВИЗНАЧЕННЯ РОУТЕРА ===
 const router = express.Router();
+import { protect } from '../middleware/authMiddleware.js';
+import {
+    getUserProfile,
+    updateUserProfile,
+    getUserPublicProfile,
+    sendFriendRequest,
+    acceptFriendRequest,
+    rejectOrRemoveFriend,
+    getFriends,
+    getFriendRequests,
+    getFriendWatchlist,
+    getUserStats,
+    getUserReviews,
+    addContentToLibrary,
+    searchUsers,
+    getUserWatchlistStatus,
+    deleteReview, // <--- ДОДАНО ЦЕЙ ІМПОРТ
+} from '../controllers/userController.js';
 
-// Застосовуємо middleware 'protect' до ВСІХ наступних маршрутів
-router.use(protect);
-
-// --- Маршрути (визначені ОДИН раз) ---
-
-// Профіль поточного користувача (GET захищено, PUT захищено та обробляється multer)
+// Profile routes
 router.route('/profile')
-    .get(getUserProfile)
-    .put(upload.single('avatar'), updateUserProfile);
-
-// Профіль іншого користувача (публічний/для друзів)
+    .get(protect, getUserProfile)
+    .put(protect, updateUserProfile);
 router.get('/:userId/profile', getUserPublicProfile);
 
-// Список перегляду іншого користувача
-router.get('/:userId/watchlist', getFriendWatchlist);
+// Friend routes
+router.post('/friends/request/:userId', protect, sendFriendRequest);
+router.post('/friends/accept/:userId', protect, acceptFriendRequest);
+router.delete('/friends/remove/:userId', protect, rejectOrRemoveFriend);
+router.get('/friends', protect, getFriends);
+router.get('/friends/requests', protect, getFriendRequests);
+router.get('/:userId/watchlist', protect, getFriendWatchlist);
 
-// Друзі
-router.post('/friends/request/:userId', sendFriendRequest);
-router.post('/friends/accept/:userId', acceptFriendRequest);
-router.delete('/friends/remove/:userId', rejectOrRemoveFriend);
+// Watchlist status and add
+router.get('/watchlist/status/:mediaType/:tmdbId', protect, getUserWatchlistStatus);
+router.post('/library/add', protect, addContentToLibrary); // This seems to be a duplicate from contentRoutes, confirm if needed
 
-// Отримати список друзів та запитів
-router.get('/friends', getFriends);
-router.get('/friends/requests', getFriendRequests);
+// Stats and reviews
+router.get('/stats', protect, getUserStats);
+router.get('/my-reviews', protect, getUserReviews);
+router.delete('/my-reviews/:reviewId', protect, deleteReview); // <--- ДОДАНО ЦЕЙ МАРШРУТ
 
-// Статистика
-router.get('/stats', getUserStats);
+// User search
+router.get('/search', protect, searchUsers);
 
-// Маршрут для отримання відгуків поточного користувача
-router.get('/my-reviews', getUserReviews);
-
-// Маршрут для додавання контенту до бібліотеки
-router.post('/library/add', addContentToLibrary);
-
-// === ДОДАНО: Маршрут для пошуку користувачів ===
-// Цей маршрут очікує параметр запиту 'q' (query)
-router.get('/search', searchUsers); // <--- ДОДАНО ЦЕЙ РЯДОК
-
-// Генерація картинок (закоментовано)
-// router.get('/share/stats', generateShareImage);
-// router.get('/share/recommendation/:watchlistItemId', generateRecommendationCard);
-
-
-// === Експортуємо роутер (ОДИН раз) ===
 export default router;
-
