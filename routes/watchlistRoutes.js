@@ -1,3 +1,4 @@
+//\server\routes\watchlistRoutes.js
 import express from 'express';
 import { protect } from '../middleware/authMiddleware.js'; // ДОДАНО
 import {

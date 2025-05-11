@@ -1,3 +1,4 @@
+//\server\controllers\watchlistController.js
 import WatchlistItem from '../models/WatchlistItem.js';
 import User from '../models/User.js'; // Може знадобитися для перевірки приватності
 import { getMediaDetails, getPosterUrl } from '../utils/tmdbHelper.js'; // Потрібен для отримання деталей перед додаванням

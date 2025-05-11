@@ -1,10 +1,10 @@
-// C:\Users\kreps\Documents\Projects\ReelTrack\server\routes\contentRoutes.js
+//\server\routes\contentRoutes.js
 import express from 'express';
 import { 
     searchContent, 
     getDetailsByTmdbId,
-    getReviewsForContent, // <--- ДОДАНО: Імпорт функції для отримання відгуків
-    submitReview          // <--- ДОДАНО: Імпорт функції для надсилання/оновлення відгуків
+    getReviewsForContent, 
+    submitReview          
 } from '../controllers/contentController.js';
 import { protect } from '../middleware/authMiddleware.js'; // <--- ДОДАНО: Імпорт middleware для захисту маршрутів
 
