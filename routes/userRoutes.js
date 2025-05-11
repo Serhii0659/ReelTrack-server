@@ -1,19 +1,21 @@
 // server\routes\userRoutes.js
 import express from 'express';
 import {
-    updateUserProfile,
-    getUserProfile,
-    getUserStats,
-    sendFriendRequest,
-    acceptFriendRequest,
-    rejectOrRemoveFriend,
-    getFriends,
-    getFriendRequests,
-    getUserPublicProfile,
-    getFriendWatchlist,
-    // generateShareImage,
-    // generateRecommendationCard,
-    addContentToLibrary, // <<< ДОДАНО: Імпорт функції контролера
+    updateUserProfile,
+    getUserProfile,
+    getUserStats,
+    sendFriendRequest,
+    acceptFriendRequest,
+    rejectOrRemoveFriend,
+    getFriends,
+    getFriendRequests,
+    getUserPublicProfile,
+    getFriendWatchlist,
+    getUserReviews,
+    searchUsers, // <--- ДОДАНО: Імпорт функції пошуку користувачів
+    // generateShareImage,
+    // generateRecommendationCard,
+    addContentToLibrary,
 } from '../controllers/userController.js';
 import { protect } from '../middleware/authMiddleware.js'; // Імпорт middleware
 
@@ -27,35 +29,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, path.join(__dirname, '..', 'uploads'));
-    },
-    filename: function (req, file, cb) {
-        const userId = req.user._id;
-        const fileExtension = path.extname(file.originalname);
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, `avatar_${userId}_${uniqueSuffix}${fileExtension}`);
-    }
+    destination: function (req, file, cb) {
+        cb(null, path.join(__dirname, '..', 'uploads'));
+    },
+    filename: function (req, file, cb) {
+        const userId = req.user._id;
+        const fileExtension = path.extname(file.originalname);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, `avatar_${userId}_${uniqueSuffix}${fileExtension}`);
+    }
 });
 
 const upload = multer({
-    storage: storage,
-    limits: { fileSize: 1024 * 1024 * 5 },
-    fileFilter: function(req, file, cb){
-        const filetypes = /jpeg|jpg|png|gif/;
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    storage: storage,
+    limits: { fileSize: 1024 * 1024 * 5 },
+    fileFilter: function(req, file, cb){
+        const filetypes = /jpeg|jpg|png|gif/;
+        const mimetype = filetypes.test(file.mimetype);
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
 
-        if(mimetype && extname){
-            return cb(null, true);
-        } else {
-            cb('Error: Images Only!');
-        }
-    }
+        if(mimetype && extname){
+            return cb(null, true);
+        } else {
+            cb('Error: Images Only!');
+        }
+    }
 });
 
 
-// === ОДНЕ ВИЗНАЧЕННЯ РОУТЕРА ===
+// === ВИЗНАЧЕННЯ РОУТЕРА ===
 const router = express.Router();
 
 // Застосовуємо middleware 'protect' до ВСІХ наступних маршрутів
@@ -65,8 +67,8 @@ router.use(protect);
 
 // Профіль поточного користувача (GET захищено, PUT захищено та обробляється multer)
 router.route('/profile')
-    .get(getUserProfile)
-    .put(upload.single('avatar'), updateUserProfile);
+    .get(getUserProfile)
+    .put(upload.single('avatar'), updateUserProfile);
 
 // Профіль іншого користувача (публічний/для друзів)
 router.get('/:userId/profile', getUserPublicProfile);
@@ -86,8 +88,15 @@ router.get('/friends/requests', getFriendRequests);
 // Статистика
 router.get('/stats', getUserStats);
 
-// === ДОДАНО: Маршрут для додавання контенту до бібліотеки ===
-router.post('/library/add', addContentToLibrary); // <<< ЦЕЙ РЯДОК БУВ ВІДСУТНІЙ
+// Маршрут для отримання відгуків поточного користувача
+router.get('/my-reviews', getUserReviews);
+
+// Маршрут для додавання контенту до бібліотеки
+router.post('/library/add', addContentToLibrary);
+
+// === ДОДАНО: Маршрут для пошуку користувачів ===
+// Цей маршрут очікує параметр запиту 'q' (query)
+router.get('/search', searchUsers); // <--- ДОДАНО ЦЕЙ РЯДОК
 
 // Генерація картинок (закоментовано)
 // router.get('/share/stats', generateShareImage);
@@ -96,3 +105,4 @@ router.post('/library/add', addContentToLibrary); // <<< ЦЕЙ РЯДОК БУ�
 
 // === Експортуємо роутер (ОДИН раз) ===
 export default router;
+

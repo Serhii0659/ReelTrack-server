@@ -1,10 +1,10 @@
 //\server\routes\contentRoutes.js
 import express from 'express';
 import { 
-    searchContent, 
-    getDetailsByTmdbId,
-    getReviewsForContent, 
-    submitReview          
+    searchContent, 
+    getDetailsByTmdbId,
+    getReviewsForContent, 
+    submitReview          
 } from '../controllers/contentController.js';
 import { protect } from '../middleware/authMiddleware.js'; // <--- ДОДАНО: Імпорт middleware для захисту маршрутів
 
