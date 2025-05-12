@@ -42,8 +42,9 @@ export const getUserProfile = asyncHandler(async (req, res) => {
 // @access  Private
 export const updateUserProfile = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    const { name, password, watchlistPrivacy } = req.body;
-    const avatarFile = req.file;
+    // Деструктуруємо 'email' з req.body, якщо ви хочете, щоб він оновлювався
+    const { name, email, password, watchlistPrivacy } = req.body; // <--- ЗМІНЕНО: Додано 'email'
+    const avatarFile = req.file; // multer поміщає інформацію про файл сюди
     let avatarUrl = null;
 
     try {
@@ -53,23 +54,33 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
             throw new Error('User not found');
         }
 
-        // Handle avatar file upload and old avatar deletion
+        // Обробка завантаження файлу аватара та видалення старого аватара
         if (avatarFile) {
+            // Шлях до нового аватара має відповідати шляху, куди multer його зберіг
+            // (наприклад, /uploads/avatars/filename.png)
+            avatarUrl = `/uploads/avatars/${avatarFile.filename}`; // <--- ЗМІНЕНО: Коректний шлях
+
+            // Якщо у користувача був старий аватар (і це не стандартний аватар)
             if (user.avatarUrl && !user.avatarUrl.includes('/uploads/default_avatar.png')) {
-                const oldAvatarFileName = user.avatarUrl.split('/uploads/')[1];
-                const oldAvatarPath = path.join(__dirname, '..', 'uploads', oldAvatarFileName);
-                try {
-                    await fs.unlink(oldAvatarPath);
-                    console.log(`Old avatar deleted: ${oldAvatarPath}`);
-                } catch (err) {
-                    console.error(`Error deleting old avatar ${oldAvatarPath}:`, err.message);
+                // Витягуємо ім'я файлу зі старого URL аватара
+                // Розділяємо по '/uploads/avatars/', щоб отримати лише ім'я файлу
+                const oldAvatarFileName = user.avatarUrl.split('/uploads/avatars/')[1]; // <--- ЗМІНЕНО: Коректний split
+                if (oldAvatarFileName) { // Перевіряємо, чи ім'я файлу успішно витягнуто
+                    const oldAvatarPath = path.join(__dirname, '..', 'uploads', 'avatars', oldAvatarFileName); // <--- ЗМІНЕНО: Коректний шлях
+                    try {
+                        await fs.unlink(oldAvatarPath); // <--- ЗМІНЕНО: Використовуємо асинхронний fs.unlink
+                        console.log(`Old avatar deleted: ${oldAvatarPath}`);
+                    } catch (err) {
+                        // Логуємо помилку, але не зупиняємо виконання, якщо видалення старого аватара не вдалося
+                        console.error(`Error deleting old avatar ${oldAvatarPath}:`, err.message);
+                    }
                 }
             }
-            avatarUrl = `/uploads/${avatarFile.filename}`;
-            user.avatarUrl = avatarUrl;
+            user.avatarUrl = avatarUrl; // Оновлюємо URL аватара користувача
         }
 
         if (name !== undefined) user.name = name;
+        if (email !== undefined) user.email = email; // <--- ДОДАНО: Оновлюємо email, якщо надано
 
         if (watchlistPrivacy && ['public', 'friendsOnly', 'private'].includes(watchlistPrivacy)) {
             user.watchlistPrivacy = watchlistPrivacy;
@@ -80,12 +91,22 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
                 res.status(400);
                 throw new Error('Password must be at least 6 characters long');
             }
-            user.password = password; // Hashing happens in pre-save hook
+            user.password = password; // Хешування пароля відбувається в pre-save хуку в моделі User
         }
 
         const updatedUser = await user.save();
 
-        res.json(updatedUser);
+        // Рекомендується повертати "очищений" об'єкт користувача без чутливої інформації,
+        // такої як хешований пароль. Це припускає, що ваша модель User має метод toJSON
+        // або віртуальну властивість, яка обробляє це.
+        res.json({
+            _id: updatedUser._id,
+            name: updatedUser.name,
+            email: updatedUser.email,
+            avatarUrl: updatedUser.avatarUrl,
+            watchlistPrivacy: updatedUser.watchlistPrivacy,
+            // Додайте інші поля, які ви хочете повернути
+        });
 
     } catch (error) {
         console.error("Update profile error:", error);
@@ -93,11 +114,10 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
             res.status(400);
             throw new Error(error.message);
         }
-        if (error.message) {
-            throw error;
-        }
-        res.status(500);
-        throw new Error('Error updating profile');
+        // Якщо статус відповіді ще не встановлено, встановлюємо 500.
+        // Якщо статус вже встановлено (наприклад, 400 від попередньої перевірки), залишаємо його.
+        res.status(res.statusCode === 200 ? 500 : res.statusCode);
+        throw error; // Перекидаємо помилку далі до загального обробника помилок Express
     }
 });
 
