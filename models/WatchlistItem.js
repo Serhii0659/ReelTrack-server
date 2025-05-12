@@ -1,4 +1,3 @@
-//\server\models\WatchlistItem.js
 import mongoose from 'mongoose';
 
 const WatchlistItemSchema = new mongoose.Schema({
@@ -91,10 +90,8 @@ const WatchlistItemSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
-
 }, { timestamps: true });
 
-// Створюємо комбінований індекс для унікальності запису (користувач + зовнішній ID)
 WatchlistItemSchema.index({ user: 1, externalId: 1 }, { unique: true });
 
 export default mongoose.model('WatchlistItem', WatchlistItemSchema);

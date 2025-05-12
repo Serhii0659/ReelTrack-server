@@ -1,10 +1,8 @@
-// C:\Users\kreps\Documents\Projects\ReelTrack\server\config\db.js
-
-import mongoose from 'mongoose'; // Важливо: використовуємо import, а не require
+import mongoose from 'mongoose';
 
 const connectDB = async () => {
     try {
-        // Переконайтеся, що MONGODB_URI встановлено у вашому server/.env файлі
+        // MONGODB_URI встановлено в .env файлі
         const conn = await mongoose.connect(process.env.MONGODB_URI);
         console.log(`MongoDB Connected: ${conn.connection.host}`);
     } catch (error) {
@@ -13,4 +11,4 @@ const connectDB = async () => {
     }
 };
 
-export default connectDB; // Важливо: використовуємо export default
+export default connectDB;

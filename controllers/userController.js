@@ -1,9 +1,8 @@
-// server/controllers/userController.js
 import User from '../models/User.js';
 import WatchlistItem from '../models/WatchlistItem.js';
 import Review from '../models/reviewModel.js';
 import mongoose from 'mongoose';
-import { getMediaDetails, getPosterUrl } from '../utils/tmdbHelper.js'; // Імпортуємо getMediaDetails
+import { getMediaDetails, getPosterUrl } from '../utils/tmdbHelper.js';
 import asyncHandler from 'express-async-handler';
 import path from 'path';
 import fs from 'fs/promises';
@@ -15,10 +14,6 @@ const __dirname = dirname(__filename);
 
 // --- Профіль Користувача ---
 
-// Отримати профіль поточного користувача
-// @desc    Get current user profile
-// @route   GET /api/users/profile
-// @access  Private
 export const getUserProfile = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id).select('-password');
     if (user) {
@@ -36,15 +31,10 @@ export const getUserProfile = asyncHandler(async (req, res) => {
     }
 });
 
-// Оновити профіль поточного користувача
-// @desc    Update current user profile
-// @route   PUT /api/users/profile
-// @access  Private
 export const updateUserProfile = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    // Деструктуруємо 'email' з req.body, якщо ви хочете, щоб він оновлювався
-    const { name, email, password, watchlistPrivacy } = req.body; // <--- ЗМІНЕНО: Додано 'email'
-    const avatarFile = req.file; // multer поміщає інформацію про файл сюди
+    const { name, email, password, watchlistPrivacy } = req.body;
+    const avatarFile = req.file;
     let avatarUrl = null;
 
     try {
@@ -54,58 +44,43 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
             throw new Error('User not found');
         }
 
-        // Обробка завантаження файлу аватара та видалення старого аватара
         if (avatarFile) {
-            // Шлях до нового аватара має відповідати шляху, куди multer його зберіг
-            // (наприклад, /uploads/avatars/filename.png)
-            avatarUrl = `/uploads/avatars/${avatarFile.filename}`; // <--- ЗМІНЕНО: Коректний шлях
-
-            // Якщо у користувача був старий аватар (і це не стандартний аватар)
+            avatarUrl = `/uploads/avatars/${avatarFile.filename}`;
             if (user.avatarUrl && !user.avatarUrl.includes('/uploads/default_avatar.png')) {
-                // Витягуємо ім'я файлу зі старого URL аватара
-                // Розділяємо по '/uploads/avatars/', щоб отримати лише ім'я файлу
-                const oldAvatarFileName = user.avatarUrl.split('/uploads/avatars/')[1]; // <--- ЗМІНЕНО: Коректний split
-                if (oldAvatarFileName) { // Перевіряємо, чи ім'я файлу успішно витягнуто
-                    const oldAvatarPath = path.join(__dirname, '..', 'uploads', 'avatars', oldAvatarFileName); // <--- ЗМІНЕНО: Коректний шлях
+                const oldAvatarFileName = user.avatarUrl.split('/uploads/avatars/')[1];
+                if (oldAvatarFileName) {
+                    const oldAvatarPath = path.join(__dirname, '..', 'uploads', 'avatars', oldAvatarFileName);
                     try {
-                        await fs.unlink(oldAvatarPath); // <--- ЗМІНЕНО: Використовуємо асинхронний fs.unlink
+                        await fs.unlink(oldAvatarPath);
                         console.log(`Old avatar deleted: ${oldAvatarPath}`);
                     } catch (err) {
-                        // Логуємо помилку, але не зупиняємо виконання, якщо видалення старого аватара не вдалося
                         console.error(`Error deleting old avatar ${oldAvatarPath}:`, err.message);
                     }
                 }
             }
-            user.avatarUrl = avatarUrl; // Оновлюємо URL аватара користувача
+            user.avatarUrl = avatarUrl;
         }
 
         if (name !== undefined) user.name = name;
-        if (email !== undefined) user.email = email; // <--- ДОДАНО: Оновлюємо email, якщо надано
-
+        if (email !== undefined) user.email = email;
         if (watchlistPrivacy && ['public', 'friendsOnly', 'private'].includes(watchlistPrivacy)) {
             user.watchlistPrivacy = watchlistPrivacy;
         }
-
         if (password && password.length > 0) {
             if (password.length < 6) {
                 res.status(400);
                 throw new Error('Password must be at least 6 characters long');
             }
-            user.password = password; // Хешування пароля відбувається в pre-save хуку в моделі User
+            user.password = password;
         }
 
         const updatedUser = await user.save();
-
-        // Рекомендується повертати "очищений" об'єкт користувача без чутливої інформації,
-        // такої як хешований пароль. Це припускає, що ваша модель User має метод toJSON
-        // або віртуальну властивість, яка обробляє це.
         res.json({
             _id: updatedUser._id,
             name: updatedUser.name,
             email: updatedUser.email,
             avatarUrl: updatedUser.avatarUrl,
             watchlistPrivacy: updatedUser.watchlistPrivacy,
-            // Додайте інші поля, які ви хочете повернути
         });
 
     } catch (error) {
@@ -114,17 +89,11 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
             res.status(400);
             throw new Error(error.message);
         }
-        // Якщо статус відповіді ще не встановлено, встановлюємо 500.
-        // Якщо статус вже встановлено (наприклад, 400 від попередньої перевірки), залишаємо його.
         res.status(res.statusCode === 200 ? 500 : res.statusCode);
-        throw error; // Перекидаємо помилку далі до загального обробника помилок Express
+        throw error;
     }
 });
 
-// Отримати публічний профіль іншого користувача
-// @desc    Get public profile of another user
-// @route   GET /api/users/:userId/profile
-// @access  Public (with privacy checks)
 export const getUserPublicProfile = asyncHandler(async (req, res) => {
     const { userId } = req.params;
     const currentUserId = req.user?._id;
@@ -141,17 +110,11 @@ export const getUserPublicProfile = asyncHandler(async (req, res) => {
     }
 
     let canView = false;
-    if (user.watchlistPrivacy === 'public') {
-        canView = true;
-    } else if (user.watchlistPrivacy === 'friendsOnly' && currentUserId) {
-        if (user.friends.some(friendId => friendId.equals(currentUserId))) {
-            canView = true;
-        }
+    if (user.watchlistPrivacy === 'public') canView = true;
+    else if (user.watchlistPrivacy === 'friendsOnly' && currentUserId) {
+        if (user.friends.some(friendId => friendId.equals(currentUserId))) canView = true;
     }
-    if (currentUserId && currentUserId.equals(user._id)) {
-        canView = true;
-    }
-
+    if (currentUserId && currentUserId.equals(user._id)) canView = true;
 
     if (!canView) {
         return res.json({
@@ -171,13 +134,8 @@ export const getUserPublicProfile = asyncHandler(async (req, res) => {
     });
 });
 
-
 // --- Управління Друзями ---
 
-// Надіслати запит у друзі
-// @desc    Send a friend request
-// @route   POST /api/users/friends/request/:userId
-// @access  Private
 export const sendFriendRequest = asyncHandler(async (req, res) => {
     const recipientId = req.params.userId;
     const senderId = req.user._id;
@@ -221,10 +179,6 @@ export const sendFriendRequest = asyncHandler(async (req, res) => {
     res.status(200).json({ message: 'Friend request sent successfully' });
 });
 
-// Прийняти запит у друзі
-// @desc    Accept a friend request
-// @route   POST /api/users/friends/accept/:userId
-// @access  Private
 export const acceptFriendRequest = asyncHandler(async (req, res) => {
     const senderId = req.params.userId;
     const recipientId = req.user._id;
@@ -259,10 +213,6 @@ export const acceptFriendRequest = asyncHandler(async (req, res) => {
     res.status(200).json({ message: 'Friend request accepted' });
 });
 
-// Відхилити запит АБО видалити друга
-// @desc    Reject a friend request or remove a friend
-// @route   DELETE /api/users/friends/remove/:userId
-// @access  Private
 export const rejectOrRemoveFriend = asyncHandler(async (req, res) => {
     const targetUserId = req.params.userId;
     const currentUserId = req.user._id;
@@ -311,10 +261,6 @@ export const rejectOrRemoveFriend = asyncHandler(async (req, res) => {
     res.status(200).json({ message: `Friendship ${actionTaken} successfully` });
 });
 
-// Отримати список друзів поточного користувача
-// @desc    Get current user's friends list
-// @route   GET /api/users/friends
-// @access  Private
 export const getFriends = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id)
         .populate('friends', 'name avatarUrl');
@@ -326,10 +272,6 @@ export const getFriends = asyncHandler(async (req, res) => {
     res.json(user.friends);
 });
 
-// Отримати список отриманих запитів у друзі
-// @desc    Get current user's received friend requests
-// @route   GET /api/users/friends/requests
-// @access  Private
 export const getFriendRequests = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id)
         .populate('friendRequestsReceived', 'name avatarUrl');
@@ -341,10 +283,6 @@ export const getFriendRequests = asyncHandler(async (req, res) => {
     res.json(user.friendRequestsReceived);
 });
 
-// Отримати список перегляду ДРУГА (з перевіркою приватності)
-// @desc    Get a friend's watchlist (with privacy check)
-// @route   GET /api/users/:userId/watchlist
-// @access  Private (requires authentication to check friendship/privacy)
 export const getFriendWatchlist = asyncHandler(async (req, res) => {
     const friendId = req.params.userId;
     const currentUserId = req.user._id;
@@ -361,18 +299,11 @@ export const getFriendWatchlist = asyncHandler(async (req, res) => {
     }
 
     let canViewWatchlist = false;
-    if (friend.watchlistPrivacy === 'public') {
-        canViewWatchlist = true;
-    }
+    if (friend.watchlistPrivacy === 'public') canViewWatchlist = true;
     else if (friend.watchlistPrivacy === 'friendsOnly' && currentUserId) {
-        if (friend.friends.some(id => id.equals(currentUserId))) {
-            canViewWatchlist = true;
-        }
+        if (friend.friends.some(id => id.equals(currentUserId))) canViewWatchlist = true;
     }
-    else if (currentUserId.equals(friend._id)) {
-            canViewWatchlist = true;
-    }
-
+    else if (currentUserId.equals(friend._id)) canViewWatchlist = true;
 
     if (!canViewWatchlist) {
         res.status(403);
@@ -419,16 +350,10 @@ export const getFriendWatchlist = asyncHandler(async (req, res) => {
     });
 });
 
-
 // --- Статистика та Аналіз ---
 
-// Генерація статистики для поточного користувача
-// @desc    Get current user's statistics
-// @route   GET /api/users/stats
-// @access  Private
 export const getUserStats = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-
     const allItems = await WatchlistItem.find({ user: userId }).lean();
 
     if (!allItems.length) {
@@ -481,36 +406,26 @@ export const getUserStats = asyncHandler(async (req, res) => {
     res.json({ stats });
 });
 
+// --- Відгуки користувача ---
 
-// --- Контролер для отримання відгуків та оцінок, залишених поточним користувачем. ---
-// @desc    Get current user's reviews and ratings
-// @route   GET /api/users/my-reviews
-// @access  Private
 export const getUserReviews = asyncHandler(async (req, res) => {
     const userId = req.user._id;
-
-    const reviews = await Review.find({ reviewer: userId })
-        .sort({ createdAt: -1 });
+    const reviews = await Review.find({ reviewer: userId }).sort({ createdAt: -1 });
 
     const reviewsWithPosterUrls = reviews.map(review => {
         const reviewObject = review.toObject();
         if (reviewObject.contentPosterPath) {
-             reviewObject.poster_full_url = getPosterUrl(reviewObject.contentPosterPath);
+            reviewObject.poster_full_url = getPosterUrl(reviewObject.contentPosterPath);
         }
         return reviewObject;
     });
 
-
     res.json(reviewsWithPosterUrls);
 });
 
-// НОВА ФУНКЦІЯ: Видалити відгук користувача
-// @desc    Delete a user's review
-// @route   DELETE /api/users/my-reviews/:reviewId
-// @access  Private
 export const deleteReview = asyncHandler(async (req, res) => {
     const { reviewId } = req.params;
-    const userId = req.user._id; // Current authenticated user
+    const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(reviewId)) {
         res.status(400);
@@ -524,9 +439,8 @@ export const deleteReview = asyncHandler(async (req, res) => {
         throw new Error('Відгук не знайдено.');
     }
 
-    // Ensure the review belongs to the authenticated user
     if (review.reviewer.toString() !== userId.toString()) {
-        res.status(403); // Forbidden
+        res.status(403);
         throw new Error('Користувач не має прав для видалення цього відгуку.');
     }
 
@@ -535,14 +449,9 @@ export const deleteReview = asyncHandler(async (req, res) => {
     res.status(200).json({ message: 'Відгук успішно видалено!' });
 });
 
+// --- Додавання контенту до бібліотеки ---
 
-// @desc    Add content to user's library (using WatchlistItem model)
-// @route   POST /api/users/library/add
-// @access  Private
-// Ця функція, ймовірно, дублює логіку toggleWatchlistContent і може бути видалена.
-// ЗМІНЕНО: РОЗКОМЕНТОВАНО функцію addContentToLibrary
 export const addContentToLibrary = asyncHandler(async (req, res) => {
-    console.log('User in addContentToLibrary controller:', req.user);
     const { tmdbId, mediaType, status, title, posterPath, releaseDate, genres } = req.body;
 
     if (!tmdbId || !mediaType || !title || !posterPath) {
@@ -582,11 +491,8 @@ export const addContentToLibrary = asyncHandler(async (req, res) => {
     });
 });
 
+// --- Пошук користувачів ---
 
-// --- ДОДАНО: Контролер для пошуку користувачів ---
-// @desc    Search users by ID (or potentially other fields later)
-// @route   GET /api/users/search
-// @access  Private (requires authentication)
 export const searchUsers = asyncHandler(async (req, res) => {
     const query = req.query.q;
 
@@ -596,13 +502,12 @@ export const searchUsers = asyncHandler(async (req, res) => {
     }
 
     if (!mongoose.Types.ObjectId.isValid(query)) {
-           res.status(400).json({ message: 'Invalid user ID format.' });
-           return;
+        res.status(400).json({ message: 'Invalid user ID format.' });
+        return;
     }
 
     try {
         const user = await User.findById(query).select('name avatarUrl');
-
         if (user) {
             res.json([user]);
         } else {
@@ -614,13 +519,11 @@ export const searchUsers = asyncHandler(async (req, res) => {
     }
 });
 
-// НОВА ФУНКЦІЯ: Отримати статус елемента в списку перегляду користувача
-// @desc    Get watchlist status for a specific content item for the current user
-// @route   GET /api/users/watchlist/status/:mediaType/:tmdbId
-// @access  Private
+// --- Статус елемента в списку перегляду ---
+
 export const getUserWatchlistStatus = asyncHandler(async (req, res) => {
     const { mediaType, tmdbId } = req.params;
-    const userId = req.user._id; // User ID from authentication middleware
+    const userId = req.user._id;
 
     if (!userId) {
         res.status(401);
@@ -632,15 +535,9 @@ export const getUserWatchlistStatus = asyncHandler(async (req, res) => {
         throw new Error('Тип медіа та TMDB ID є обов\'язковими.');
     }
 
-    // Перевірку ObjectId для tmdbId ВИДАЛЕНО, оскільки це ID з TMDB, а не з MongoDB
-    // if (!mongoose.Types.ObjectId.isValid(tmdbId)) {
-    //     res.status(400);
-    //     throw new Error('Невірний формат ID відгуку.');
-    // }
-
     const watchlistItem = await WatchlistItem.findOne({
         user: userId,
-        externalId: String(tmdbId), // Переконайтеся, що externalId зберігається як рядок, якщо це ваша схема
+        externalId: String(tmdbId),
         mediaType: mediaType,
     });
 
@@ -650,15 +547,3 @@ export const getUserWatchlistStatus = asyncHandler(async (req, res) => {
         res.json({ exists: false, status: null, userRating: null });
     }
 });
-
-
-// --- Генерація Картинок (складно, вимагає додаткових бібліотек) ---
-/*
-export const generateShareImage = asyncHandler(async (req, res) => {
-    res.status(501).json({ message: 'Image generation not implemented yet' });
-});
-
-export const generateRecommendationCard = asyncHandler(async (req, res) => {
-     res.status(501).json({ message: 'Recommendation card generation not implemented yet' });
-});
-*/
