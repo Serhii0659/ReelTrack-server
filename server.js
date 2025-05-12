@@ -45,9 +45,9 @@ if (process.env.NODE_ENV === 'development') { // Development mode
 }
 
 const allowedOrigins = [
-    process.env.CLIENT_URL,
-    process.env.CLIENT_URL_PROD,
-].filter(Boolean);
+    ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
+    ...(process.env.CLIENT_URL_PROD ? process.env.CLIENT_URL_PROD.split(',') : []),
+];
 
 app.use(cors({
     origin: (origin, callback) => {
