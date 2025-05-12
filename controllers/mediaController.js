@@ -1,7 +1,7 @@
 import { searchMedia, getPosterUrl } from '../utils/tmdbHelper.js';
 
 export const searchMediaController = async (req, res) => {
-    const { query, type } = req.query; // type може бути 'movie', 'tv', 'multi'
+    const { query, type } = req.query;
 
     if (!query) {
         return res.status(400).json({ message: 'Search query is required' });
@@ -9,7 +9,6 @@ export const searchMediaController = async (req, res) => {
 
     try {
         const results = await searchMedia(query, type || 'multi');
-        // Додаємо повний URL постера до результатів
         const resultsWithPosterUrl = results.map(item => ({
             ...item,
             poster_full_url: getPosterUrl(item.poster_path)

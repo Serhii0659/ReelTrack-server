@@ -1,79 +1,21 @@
 import WatchlistItem from '../models/WatchlistItem.js';
-import User from '../models/User.js'; // Може знадобитися для перевірки приватності
 import { getMediaDetails, getPosterUrl } from '../utils/tmdbHelper.js'; // Потрібен для отримання деталей перед додаванням
 import mongoose from 'mongoose';
-
-// --- Додавання елемента до списку ---
-export const addToWatchlist = async (req, res) => {
-    const { externalId, mediaType, status } = req.body; // Отримуємо ID і тип з запиту
-    const userId = req.user._id; // ID користувача з authMiddleware
-
-    if (!externalId || !mediaType) {
-        return res.status(400).json({ message: 'External ID and media type are required' });
-    }
-    if (!['movie', 'tv'].includes(mediaType)) {
-        return res.status(400).json({ message: 'Invalid media type' });
-    }
-
-    try {
-        const existingItem = await WatchlistItem.findOne({ user: userId, externalId: externalId.toString(), mediaType });
-        if (existingItem) {
-            return res.status(400).json({ message: 'Item already exists in your watchlist' });
-        }
-
-        // Отримуємо деталі з TMDB, щоб зберегти основну інформацію
-        const details = await getMediaDetails(externalId, mediaType);
-        if (!details) {
-            return res.status(404).json({ message: 'Media not found on external service' });
-        }
-
-        const newItem = new WatchlistItem({
-            user: userId,
-            externalId: externalId.toString(),
-            mediaType,
-            title: details.title || details.name,
-            originalTitle: details.original_title || details.original_name,
-            posterPath: details.poster_path,
-            releaseDate: details.release_date || details.first_air_date,
-            overview: details.overview,
-            genres: details.genres?.map(g => g.name) || [],
-            language: details.original_language,
-            runtime: mediaType === 'movie' ? details.runtime : null,
-            totalEpisodes: mediaType === 'tv' ? details.number_of_episodes : null,
-            totalSeasons: mediaType === 'tv' ? details.number_of_seasons : null,
-            status: status || 'plan_to_watch',
-        });
-
-        await newItem.save();
-
-// Повертаємо створений елемент (з повним URL постера)
-        const itemWithPoster = newItem.toObject();
-        itemWithPoster.poster_full_url = getPosterUrl(itemWithPoster.posterPath);
-
-        res.status(201).json(itemWithPoster);
-
-    } catch (error) {
-        console.error("Add to watchlist error:", error);
-        if (error.code === 11000) { // Duplicate key error
-            return res.status(400).json({ message: 'Item already seems to exist in your watchlist.' });
-        }
-        res.status(500).json({ message: 'Error adding item to watchlist', error: error.message });
-    }
-};
+import asyncHandler from 'express-async-handler';
 
 // --- Отримання списку перегляду користувача ---
-export const getWatchlist = async (req, res) => {
+// @desc    Get current user's watchlist
+// @route   GET /api/watchlist
+// @access  Private
+const getWatchlist = asyncHandler(async (req, res) => {
     const userId = req.user._id;
     const { status, sortBy, sortOrder = 'desc', page = 1, limit = 20 } = req.query;
 
     const query = { user: userId };
-    if (status) {
-        query.status = status; // Фільтрація за статусом
-    }
+    if (status) query.status = status;
 
     const sortOptions = {};
     if (sortBy) {
-        // Дозволені поля для сортування
         const allowedSortFields = ['createdAt', 'updatedAt', 'dateCompleted', 'userRating', 'releaseDate', 'title'];
         if (allowedSortFields.includes(sortBy)) {
             sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
@@ -81,7 +23,7 @@ export const getWatchlist = async (req, res) => {
             return res.status(400).json({ message: `Sorting by '${sortBy}' is not allowed.` });
         }
     } else {
-        sortOptions.updatedAt = -1; // Сортування за замовчуванням (останні оновлені)
+        sortOptions.updatedAt = -1;
     }
 
     const pageNum = parseInt(page, 10);
@@ -93,15 +35,13 @@ export const getWatchlist = async (req, res) => {
             .sort(sortOptions)
             .skip(skip)
             .limit(limitNum)
-            .lean(); // .lean() для швидшості, повертає прості JS об'єкти
+            .lean();
 
-        // Додаємо URL постера
         const itemsWithPoster = items.map(item => ({
             ...item,
             poster_full_url: getPosterUrl(item.posterPath)
         }));
 
-        // Отримуємо загальну кількість елементів для пагінації
         const totalItems = await WatchlistItem.countDocuments(query);
 
         res.json({
@@ -114,71 +54,82 @@ export const getWatchlist = async (req, res) => {
         console.error("Get watchlist error:", error);
         res.status(500).json({ message: 'Error fetching watchlist' });
     }
-};
-
+});
 
 // --- Оновлення елемента списку ---
-export const updateWatchlistItem = async (req, res) => {
-    const { id } = req.params; // ID запису в *нашій* базі даних
+// @desc    Update a watchlist item
+// @route   PUT /api/watchlist/:id
+// @access  Private
+const updateWatchlistItem = asyncHandler(async (req, res) => {
+    const { id } = req.params;
     const userId = req.user._id;
-    const updateData = req.body; // Дані для оновлення (status, userRating, episodesWatched, userNotes, dateStartedWatching, dateCompleted, reminderDate)
+    const updateData = req.body;
 
-    // Перевірка валідності ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: 'Invalid watchlist item ID' });
     }
 
     // Забороняємо оновлювати деякі поля напряму
-    delete updateData.user;
-    delete updateData.externalId;
-    delete updateData.mediaType;
-    delete updateData.title; // та інші поля, що беруться з TMDB
+    [
+        'user', 'externalId', 'mediaType', 'title', 'posterPath', 'originalTitle',
+        'releaseDate', 'overview', 'genres', 'language', 'runtime',
+        'totalEpisodes', 'totalSeasons', 'dateAdded'
+    ].forEach(field => delete updateData[field]);
 
-    // Валідація значень (приклад)
-    if (updateData.userRating && (updateData.userRating < 0 || updateData.userRating > 10)) {
+    if (updateData.userRating !== undefined && (updateData.userRating < 0 || updateData.userRating > 10)) {
         return res.status(400).json({ message: 'Rating must be between 0 and 10' });
     }
     if (updateData.status && !['watching', 'completed', 'on_hold', 'dropped', 'plan_to_watch'].includes(updateData.status)) {
         return res.status(400).json({ message: 'Invalid status value' });
     }
-    if (updateData.episodesWatched && updateData.episodesWatched < 0) {
+    if (updateData.episodesWatched !== undefined && updateData.episodesWatched < 0) {
         return res.status(400).json({ message: 'Episodes watched cannot be negative' });
     }
-
-    // Якщо статус змінюється на 'completed', автоматично встановити dateCompleted
-    if (updateData.status === 'completed' && !updateData.dateCompleted) {
-        updateData.dateCompleted = new Date();
+    if (updateData.dateStartedWatching && isNaN(new Date(updateData.dateStartedWatching).getTime())) {
+        return res.status(400).json({ message: 'Invalid dateStartedWatching format' });
     }
-    // Якщо статус змінюється на 'watching', автоматично встановити dateStartedWatching (якщо ще не встановлено)
-    // (Потребує перевірки поточного стану об'єкта) - Краще робити на клієнті або з обережністю тут
+    if (updateData.dateCompleted && isNaN(new Date(updateData.dateCompleted).getTime())) {
+        return res.status(400).json({ message: 'Invalid dateCompleted format' });
+    }
+    if (updateData.reminderDate && isNaN(new Date(updateData.reminderDate).getTime())) {
+        return res.status(400).json({ message: 'Invalid reminderDate format' });
+    }
 
+    if (updateData.status === 'completed' && updateData.dateCompleted === undefined) {
+        updateData.dateCompleted = new Date();
+    } else if (updateData.status !== 'completed' && updateData.dateCompleted !== undefined) {
+        updateData.dateCompleted = null;
+    }
 
     try {
         const updatedItem = await WatchlistItem.findOneAndUpdate(
-            { _id: id, user: userId }, // Знайти елемент за ID І переконатись, що він належить користувачу
-            { $set: updateData }, // Застосувати оновлення
-            { new: true, runValidators: true } // Повернути оновлений документ і запустити валідатори моделі
+            { _id: id, user: userId },
+            { $set: updateData },
+            { new: true, runValidators: true }
         ).lean();
 
         if (!updatedItem) {
             return res.status(404).json({ message: 'Watchlist item not found or you do not have permission to update it' });
         }
 
-        // Додаємо URL постера
         updatedItem.poster_full_url = getPosterUrl(updatedItem.posterPath);
 
         res.json(updatedItem);
     } catch (error) {
         console.error("Update watchlist item error:", error);
         if (error.name === 'ValidationError') {
-            return res.status(400).json({ message: error.message });
+            const messages = Object.values(error.errors).map(val => val.message);
+            return res.status(400).json({ message: messages.join(', ') });
         }
         res.status(500).json({ message: 'Error updating watchlist item' });
     }
-};
+});
 
 // --- Видалення елемента списку ---
-export const deleteWatchlistItem = async (req, res) => {
+// @desc    Delete a watchlist item
+// @route   DELETE /api/watchlist/:id
+// @access  Private
+const deleteWatchlistItem = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const userId = req.user._id;
 
@@ -187,7 +138,7 @@ export const deleteWatchlistItem = async (req, res) => {
     }
 
     try {
-        const result = await WatchlistItem.deleteOne({ _id: id, user: userId }); // Перевіряємо належність користувачу
+        const result = await WatchlistItem.deleteOne({ _id: id, user: userId });
 
         if (result.deletedCount === 0) {
             return res.status(404).json({ message: 'Watchlist item not found or you do not have permission to delete it' });
@@ -198,10 +149,13 @@ export const deleteWatchlistItem = async (req, res) => {
         console.error("Delete watchlist item error:", error);
         res.status(500).json({ message: 'Error deleting watchlist item' });
     }
-};
+});
 
 // --- (Опціонально) Отримання одного елемента ---
-export const getWatchlistItemDetails = async (req, res) => {
+// @desc    Get a single watchlist item details
+// @route   GET /api/watchlist/:id
+// @access  Private
+const getWatchlistItemDetails = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const userId = req.user._id;
 
@@ -220,4 +174,85 @@ export const getWatchlistItemDetails = async (req, res) => {
         console.error("Get watchlist item details error:", error);
         res.status(500).json({ message: 'Error fetching watchlist item details' });
     }
+});
+
+// --- Додати або видалити контент зі списку перегляду ---
+// @desc    Add or remove content from user's watchlist
+// @route   POST /api/watchlist/toggle
+// @access  Private
+const toggleWatchlistContent = asyncHandler(async (req, res) => {
+    const { externalId, mediaType } = req.body;
+    const userId = req.user._id;
+
+    if (!externalId || !mediaType) {
+        return res.status(400).json({ message: 'External ID and media type are required' });
+    }
+    if (!['movie', 'tv'].includes(mediaType)) {
+        return res.status(400).json({ message: 'Invalid media type' });
+    }
+
+    try {
+        let watchlistItem = await WatchlistItem.findOne({
+            user: userId,
+            externalId: externalId.toString(),
+            mediaType: mediaType,
+        });
+
+        if (watchlistItem) {
+            await watchlistItem.deleteOne();
+            res.status(200).json({
+                message: 'Контент успішно видалено зі списку перегляду',
+                action: 'removed',
+                added: false
+            });
+        } else {
+            const details = await getMediaDetails(externalId, mediaType);
+
+            if (!details) {
+                return res.status(404).json({ message: 'Media not found on external service' });
+            }
+
+            const newItem = await WatchlistItem.create({
+                user: userId,
+                externalId: externalId.toString(),
+                mediaType,
+                title: details.title || details.name,
+                originalTitle: details.original_title || details.original_name,
+                posterPath: details.poster_path,
+                releaseDate: details.release_date || details.first_air_date,
+                overview: details.overview,
+                genres: details.genres?.map(g => g.name) || [],
+                language: details.original_language,
+                runtime: mediaType === 'movie' ? details.runtime : null,
+                totalEpisodes: mediaType === 'tv' ? details.number_of_episodes : null,
+                totalSeasons: mediaType === 'tv' ? details.number_of_seasons : null,
+                status: 'plan_to_watch',
+            });
+
+            const itemWithPoster = newItem.toObject();
+            itemWithPoster.poster_full_url = getPosterUrl(itemWithPoster.posterPath);
+
+            res.status(201).json({
+                message: 'Контент успішно додано до списку перегляду',
+                item: itemWithPoster,
+                action: 'added',
+                added: true
+            });
+        }
+    } catch (error) {
+        console.error("Toggle watchlist content error:", error);
+        if (error.code === 11000) {
+            return res.status(400).json({ message: 'An item with this ID already exists in your watchlist.' });
+        }
+        res.status(500).json({ message: 'Error toggling watchlist content', error: error.message });
+    }
+});
+
+// Експортуємо функції контролера
+export {
+    getWatchlist,
+    updateWatchlistItem,
+    deleteWatchlistItem,
+    getWatchlistItemDetails,
+    toggleWatchlistContent,
 };

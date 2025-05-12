@@ -1,45 +1,80 @@
 import express from 'express';
+import { protect } from '../middleware/authMiddleware.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
 import {
-    updateUserProfile,
     getUserProfile,
-    getUserStats,
+    updateUserProfile,
+    getUserPublicProfile,
     sendFriendRequest,
     acceptFriendRequest,
     rejectOrRemoveFriend,
     getFriends,
     getFriendRequests,
-    getUserPublicProfile, // Для перегляду профілю друга
-    getFriendWatchlist, // Для перегляду списку друга
-    // generateShareImage, // Функції генерації картинок (складніші)
-    // generateRecommendationCard,
+    getFriendWatchlist,
+    getUserStats,
+    getUserReviews,
+    addContentToLibrary,
+    searchUsers,
+    getUserWatchlistStatus,
+    deleteReview,
 } from '../controllers/userController.js';
-import { protect } from '../middleware/authMiddleware.js'; // Захист всіх цих маршрутів
 
 const router = express.Router();
 
-// --- Профіль поточного користувача ---
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = 'uploads/avatars/';
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, `${req.user.id}-${Date.now()}${path.extname(file.originalname)}`);
+    },
+});
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 1024 * 1024 * 5 },
+    fileFilter: (req, file, cb) => {
+        const filetypes = /jpeg|jpg|png|gif/;
+        const mimetype = filetypes.test(file.mimetype);
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Дозволені лише файли зображень (jpeg, jpg, png, gif)!'));
+        }
+    },
+});
+
+// Profile routes
 router.route('/profile')
-    .get(getUserProfile)     // GET /api/users/profile - Отримати свій профіль
-    .put(updateUserProfile); // PUT /api/users/profile - Оновити свій профіль (включаючи налаштування приватності)
+    .get(protect, getUserProfile)
+    .put(protect, upload.single('avatar'), updateUserProfile);
 
-// --- Профіль іншого користувача (публічний/для друзів) ---
-router.get('/:userId/profile', getUserPublicProfile); // GET /api/users/{userId}/profile
+router.get('/:userId/profile', getUserPublicProfile);
 
-// --- Список перегляду іншого користувача ---
-router.get('/:userId/watchlist', getFriendWatchlist); // GET /api/users/{userId}/watchlist
+// Friend routes
+router.post('/friends/request/:userId', protect, sendFriendRequest);
+router.post('/friends/accept/:userId', protect, acceptFriendRequest);
+router.delete('/friends/remove/:userId', protect, rejectOrRemoveFriend);
+router.get('/friends', protect, getFriends);
+router.get('/friends/requests', protect, getFriendRequests);
+router.get('/:userId/watchlist', protect, getFriendWatchlist);
 
-// --- Друзі ---
-router.post('/friends/request/:userId', sendFriendRequest); // Надіслати запит
-router.post('/friends/accept/:userId', acceptFriendRequest);  // Прийняти запит
-router.delete('/friends/remove/:userId', rejectOrRemoveFriend); // Відхилити запит / Видалити друга
-router.get('/friends', getFriends);                 // Отримати список друзів
-router.get('/friends/requests', getFriendRequests); // Отримати список запитів у друзі
+// Watchlist status and add
+router.get('/watchlist/status/:mediaType/:tmdbId', protect, getUserWatchlistStatus);
+router.post('/library/add', protect, addContentToLibrary);
 
-// --- Статистика ---
-router.get('/stats', getUserStats); // GET /api/users/stats - Отримати статистику поточного користувача
+// Stats and reviews
+router.get('/stats', protect, getUserStats);
+router.get('/my-reviews', protect, getUserReviews);
+router.delete('/my-reviews/:reviewId', protect, deleteReview);
 
-// --- Генерація картинок (складніші, поки що можна закоментувати) ---
-// router.get('/share/stats', generateShareImage);
-// router.get('/share/recommendation/:watchlistItemId', generateRecommendationCard);
+// User search
+router.get('/search', protect, searchUsers);
 
 export default router;

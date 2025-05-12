@@ -1,6 +1,28 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+const libraryItemSchema = new mongoose.Schema({
+    tmdbId: {
+        type: Number,
+        required: true,
+    },
+    mediaType: {
+        type: String,
+        required: true,
+        enum: ['movie', 'tv']
+    },
+    status: {
+        type: String,
+        required: true,
+        enum: ['planning', 'watching', 'completed', 'dropped'],
+        default: 'planning'
+    },
+    addedAt: {
+        type: Date,
+        default: Date.now
+    }
+}, { _id: false });
+
 const UserSchema = new mongoose.Schema({
     email: {
         type: String,
@@ -22,21 +44,30 @@ const UserSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['user', 'admin'], // Можливі ролі
+        enum: ['user', 'admin'],
         default: 'user',
     },
     refreshToken: {
         type: String,
         default: null,
     },
-}, { timestamps: true }); // Додає createdAt та updatedAt
+    friends: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    }],
+    friendRequestsSent: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    }],
+    friendRequestsReceived: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+    }],
+    library: [libraryItemSchema]
+}, { timestamps: true });
 
-// Middleware (hook) для хешування пароля перед збереженням
 UserSchema.pre('save', async function (next) {
-    // Хешуємо пароль, тільки якщо він був змінений (або новий)
-    if (!this.isModified('password')) {
-        return next();
-    }
+    if (!this.isModified('password')) return next();
     try {
         const salt = await bcrypt.genSalt(10);
         this.password = await bcrypt.hash(this.password, salt);
@@ -46,7 +77,6 @@ UserSchema.pre('save', async function (next) {
     }
 });
 
-// Метод для порівняння введеного пароля з хешованим у базі
 UserSchema.methods.comparePassword = async function (candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
